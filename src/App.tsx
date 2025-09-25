@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Modal } from 'antd';
+import { Layout, Menu, Button } from 'antd';
 import { MessageOutlined, PictureOutlined, SettingOutlined } from '@ant-design/icons';
 import ChatInterface from './components/ChatInterface';
 import ImageGeneration from './components/ImageGeneration';
@@ -69,7 +69,7 @@ const App: React.FC = () => {
             <h1 style={{ margin: 0, color: '#1f2937', fontSize: '20px', fontWeight: 600 }}>
               Creative Ark
             </h1>
-            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: -2 }}>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2, lineHeight: 1 }}>
               多模态AI创作平台
             </div>
           </div>
@@ -92,7 +92,7 @@ const App: React.FC = () => {
       
       <Layout>
         <Sider 
-          width={200} 
+          width={240} 
           style={{ 
             background: '#fff', 
             borderRight: '1px solid #f0f0f0',
@@ -112,7 +112,7 @@ const App: React.FC = () => {
           />
         </Sider>
         
-        <Content style={{ background: '#f8fafc' }}>
+        <Content style={{ background: '#f8fafc', padding: '24px' }}>
           {renderContent()}
         </Content>
       </Layout>

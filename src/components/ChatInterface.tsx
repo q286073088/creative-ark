@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Input, Button, Space, message, Avatar, Typography, Select, Upload, Image, Drawer, Empty, Tag, Popconfirm } from 'antd';
-import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
+import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { getAllChatModels, MODEL_PROVIDERS } from '../config/models';
 import { getApiConfig, decryptApiKey } from '../utils/apiConfig';
@@ -300,8 +300,8 @@ const ChatInterface: React.FC = () => {
             <Select
               value={selectedModel}
               onChange={setSelectedModel}
-              style={{ width: 300 }}
-              size="small"
+              style={{ width: 420 }}
+              size="middle"
               disabled={noModels}
               placeholder={noModels ? "未检测到可用模型，请在 设置 中配置 .env" : "选择模型"}
             >
@@ -310,10 +310,10 @@ const ChatInterface: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>{model.name}</span>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <Tag size="small" color={model.supportImages ? 'green' : 'blue'}>
+                      <Tag color={model.supportImages ? 'green' : 'blue'}>
                         {model.supportImages ? '视觉' : '文本'}
                       </Tag>
-                      <Tag size="small" color="orange">{model.providerName}</Tag>
+                      <Tag color="orange">{model.providerName}</Tag>
                     </div>
                   </div>
                 </Option>
@@ -367,7 +367,7 @@ const ChatInterface: React.FC = () => {
               </div>
             </div>
           ) : (
-            messages.map((message, index) => (
+            messages.map((message) => (
               <div key={message.id} style={{ marginBottom: 24 }}>
                 <div style={{ 
                   display: 'flex', 

@@ -336,10 +336,10 @@ const ImageGeneration: React.FC = () => {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span>{model.name}</span>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <Tag size="small" color={model.type === 'image-generation' ? 'blue' : 'green'}>
+                        <Tag color={model.type === 'image-generation' ? 'blue' : 'green'}>
                           {model.type === 'image-generation' ? '文生图' : '图生图'}
                         </Tag>
-                        <Tag size="small" color="orange">{model.providerName}</Tag>
+                        <Tag color="orange">{model.providerName}</Tag>
                       </div>
                     </div>
                   </Option>
@@ -562,10 +562,10 @@ const ImageGeneration: React.FC = () => {
                         {formatTime(item.timestamp)}
                       </span>
                       {item.imageSize && (
-                        <Tag size="small" color="blue">{item.imageSize}</Tag>
+                        <Tag color="blue">{item.imageSize}</Tag>
                       )}
                       {item.model && (
-                        <Tag size="small" color="green">
+                        <Tag color="green">
                           {imageModels.find(m => m.id === item.model)?.name}
                         </Tag>
                       )}
