@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Input, Button, Space, message, Avatar, Typography, Select, Upload, Image, Drawer, Empty, Tag, Popconfirm } from 'antd';
-import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Input, Button, Space, message, Avatar, Typography, Select, Upload, Image, Drawer, Empty, Tag, Popconfirm, Dropdown, Menu } from 'antd';
+import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined, CopyOutlined, RedoOutlined, BranchesOutlined, ExportOutlined, PlusOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { getAllChatModels, getProviderConfig, initializeConfig } from '../config/models';
 
@@ -17,21 +17,36 @@ interface Message {
   timestamp: string;
   model?: string;
   providerId?: string;
+  thinking?: boolean;
+  thinkingContent?: string;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 const ChatInterface: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const [inputValue, setInputValue] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => (getAllChatModels()[0]?.id) || '');
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const chatModels = getAllChatModels();
   const currentModel = chatModels.find(m => m.id === selectedModel);
   const supportsImages = currentModel?.supportImages || false;
   const noModels = chatModels.length === 0;
+
+  const currentSession = sessions.find(s => s.id === currentSessionId);
+  const messages = currentSession?.messages || [];
 
   useEffect(() => {
     const initAndSetModel = async () => {
@@ -45,22 +60,101 @@ const ChatInterface: React.FC = () => {
   }, [selectedModel]);
 
   useEffect(() => {
-    const savedMessages = localStorage.getItem('chat_history');
-    if (savedMessages) {
+    const savedSessions = localStorage.getItem('chat_sessions');
+    const savedCurrentSessionId = localStorage.getItem('current_session_id');
+
+    if (savedSessions) {
       try {
-        setMessages(JSON.parse(savedMessages));
+        const parsedSessions = JSON.parse(savedSessions);
+        setSessions(parsedSessions);
+
+        if (savedCurrentSessionId && parsedSessions.find((s: ChatSession) => s.id === savedCurrentSessionId)) {
+          setCurrentSessionId(savedCurrentSessionId);
+        } else if (parsedSessions.length > 0) {
+          setCurrentSessionId(parsedSessions[0].id);
+        } else {
+          createNewSession();
+        }
       } catch (error) {
-        console.error('加载聊天历史失败:', error);
+        console.error('加载聊天会话失败:', error);
+        createNewSession();
       }
+    } else {
+      createNewSession();
     }
   }, []);
+
+  useEffect(() => {
+    if (currentSessionId) {
+      localStorage.setItem('current_session_id', currentSessionId);
+    }
+  }, [currentSessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const saveMessages = (newMessages: Message[]) => {
-    localStorage.setItem('chat_history', JSON.stringify(newMessages));
+  const saveSessions = (newSessions: ChatSession[]) => {
+    localStorage.setItem('chat_sessions', JSON.stringify(newSessions));
+  };
+
+  const createNewSession = () => {
+    const newSession: ChatSession = {
+      id: Date.now().toString(),
+      title: '新对话',
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const newSessions = [...sessions, newSession];
+    setSessions(newSessions);
+    setCurrentSessionId(newSession.id);
+    saveSessions(newSessions);
+  };
+
+  const deleteSession = (sessionId: string) => {
+    const newSessions = sessions.filter(s => s.id !== sessionId);
+    setSessions(newSessions);
+    saveSessions(newSessions);
+
+    if (sessionId === currentSessionId && newSessions.length > 0) {
+      setCurrentSessionId(newSessions[0].id);
+    } else if (newSessions.length === 0) {
+      createNewSession();
+    }
+  };
+
+  const updateSessionMessages = (sessionId: string, newMessages: Message[]) => {
+    const updatedSessions = sessions.map(session => {
+      if (session.id === sessionId) {
+        return {
+          ...session,
+          messages: newMessages,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return session;
+    });
+
+    setSessions(updatedSessions);
+    saveSessions(updatedSessions);
+  };
+
+  const generateSessionTitle = async (messages: Message[]) => {
+    if (messages.length < 2) return '新对话';
+
+    const userMessages = messages.filter(m => m.role === 'user');
+    if (userMessages.length === 0) return '新对话';
+
+    const lastUserMessage = userMessages[userMessages.length - 1];
+    const content = lastUserMessage.content;
+
+    if (content.length <= 20) {
+      return content;
+    }
+
+    return content.substring(0, 20) + '...';
   };
 
   
@@ -108,7 +202,7 @@ const ChatInterface: React.FC = () => {
     };
 
     const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    updateSessionMessages(currentSessionId, newMessages);
     setInputValue('');
     setUploadedFiles([]);
     setLoading(true);
@@ -150,7 +244,7 @@ const ChatInterface: React.FC = () => {
         stream: true
       };
 
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetch(`${baseUrl}v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -171,11 +265,12 @@ const ChatInterface: React.FC = () => {
         content: '',
         timestamp: new Date().toISOString(),
         model: selectedModel,
-        providerId: currentModel.providerId
+        providerId: currentModel.providerId,
+        thinking: currentModel?.name?.toLowerCase().includes('think') || currentModel?.name?.toLowerCase().includes('思考')
       };
 
       const messagesWithPlaceholder = [...newMessages, assistantMessage];
-      setMessages(messagesWithPlaceholder);
+      updateSessionMessages(currentSessionId, messagesWithPlaceholder);
 
       // 处理流式响应
       const reader = response.body?.getReader();
@@ -203,11 +298,23 @@ const ChatInterface: React.FC = () => {
                     accumulatedContent += delta.content;
                     
                     // 实时更新消息内容
-                    setMessages(prev => prev.map(msg => 
-                      msg.id === assistantMessage.id 
-                        ? { ...msg, content: accumulatedContent }
-                        : msg
-                    ));
+                    if (assistantMessage.thinking && accumulatedContent.includes('</think>')) {
+                      const thinkEndIndex = accumulatedContent.indexOf('</think>');
+                      const thinkingContent = accumulatedContent.substring(0, thinkEndIndex + 8);
+                      const responseContent = accumulatedContent.substring(thinkEndIndex + 8);
+
+                      updateSessionMessages(currentSessionId, messagesWithPlaceholder.map(msg =>
+                        msg.id === assistantMessage.id
+                          ? { ...msg, content: responseContent, thinkingContent: thinkingContent }
+                          : msg
+                      ));
+                    } else {
+                      updateSessionMessages(currentSessionId, messagesWithPlaceholder.map(msg =>
+                        msg.id === assistantMessage.id
+                          ? { ...msg, content: accumulatedContent }
+                          : msg
+                      ));
+                    }
                   }
                 } catch (parseError) {
                   // 忽略解析错误，继续处理下一行
@@ -222,13 +329,33 @@ const ChatInterface: React.FC = () => {
       }
 
       // 保存最终消息
-      const finalMessages = messagesWithPlaceholder.map(msg => 
-        msg.id === assistantMessage.id 
-          ? { ...msg, content: accumulatedContent }
+      let finalContent = accumulatedContent;
+      let finalThinkingContent = undefined;
+
+      if (assistantMessage.thinking && accumulatedContent.includes('</think>')) {
+        const thinkEndIndex = accumulatedContent.indexOf('</think>');
+        finalThinkingContent = accumulatedContent.substring(0, thinkEndIndex + 8);
+        finalContent = accumulatedContent.substring(thinkEndIndex + 8);
+      }
+
+      const finalMessages = messagesWithPlaceholder.map(msg =>
+        msg.id === assistantMessage.id
+          ? { ...msg, content: finalContent, thinkingContent: finalThinkingContent }
           : msg
       );
-      setMessages(finalMessages);
-      saveMessages(finalMessages);
+
+      updateSessionMessages(currentSessionId, finalMessages);
+
+      // 生成会话标题
+      const title = await generateSessionTitle(finalMessages);
+      const updatedSessions = sessions.map(session => {
+        if (session.id === currentSessionId) {
+          return { ...session, title };
+        }
+        return session;
+      });
+      setSessions(updatedSessions);
+      saveSessions(updatedSessions);
     } catch (error) {
       console.error('发送消息失败:', error);
       message.error(`发送失败: ${error instanceof Error ? error.message : '未知错误'}`);
