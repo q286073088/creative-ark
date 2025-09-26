@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, Input, Button, Space, message, Avatar, Typography, Select, Upload, Image, Drawer, Empty, Tag, Popconfirm } from 'antd';
 import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
-import { getAllChatModels, MODEL_PROVIDERS } from '../config/models';
-import { getApiConfig, decryptApiKey } from '../utils/apiConfig';
+import { getAllChatModels, getProviderConfig, initializeConfig } from '../config/models';
+
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -34,10 +34,15 @@ const ChatInterface: React.FC = () => {
   const noModels = chatModels.length === 0;
 
   useEffect(() => {
-    if (!selectedModel && chatModels.length > 0) {
-      setSelectedModel(chatModels[0].id);
-    }
-  }, [chatModels, selectedModel]);
+    const initAndSetModel = async () => {
+      await initializeConfig();
+      const models = getAllChatModels();
+      if (!selectedModel && models.length > 0) {
+        setSelectedModel(models[0].id);
+      }
+    };
+    initAndSetModel();
+  }, [selectedModel]);
 
   useEffect(() => {
     const savedMessages = localStorage.getItem('chat_history');
@@ -58,17 +63,7 @@ const ChatInterface: React.FC = () => {
     localStorage.setItem('chat_history', JSON.stringify(newMessages));
   };
 
-  const getProviderConfig = (providerId: string) => {
-    const provider = MODEL_PROVIDERS.find(p => p.id === providerId);
-    const config = getApiConfig();
-    const providerConfig = config.providers?.[providerId];
-    
-    return {
-      baseUrl: provider?.baseUrl || '',
-      apiKey: providerConfig?.apiKey ? decryptApiKey(providerConfig.apiKey) : ''
-    };
-  };
-
+  
   const sendMessage = async () => {
     if (!inputValue.trim() && uploadedFiles.length === 0) {
       message.warning('请输入消息内容或上传图片');
@@ -81,7 +76,23 @@ const ChatInterface: React.FC = () => {
     }
 
     const providerConfig = getProviderConfig(currentModel.providerId);
-    if (!providerConfig.apiKey) {
+
+    if (!providerConfig) {
+      message.error('提供商配置不存在');
+      return;
+    }
+
+    const isModelScope = providerConfig.baseUrl.includes('modelscope.cn');
+
+    // 使用代理路径或原始 URL
+    let baseUrl;
+    if (isModelScope) {
+      baseUrl = '/api-modelscope/';
+    } else {
+      baseUrl = providerConfig.baseUrl.endsWith('/') ? providerConfig.baseUrl : providerConfig.baseUrl + '/';
+    }
+    const apiKey = providerConfig.apiKey;
+    if (!apiKey) {
       message.error(`请先配置${currentModel.providerName}的API密钥`);
       return;
     }
@@ -136,34 +147,86 @@ const ChatInterface: React.FC = () => {
         })),
         temperature: 0.7,
         max_tokens: currentModel.maxTokens || 2000,
-        stream: false
+        stream: true
       };
 
-      const response = await fetch(`${providerConfig.baseUrl}/chat/completions`, {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${providerConfig.apiKey}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
       }
 
-      const data = await response.json();
+      // 创建助手消息占位符
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.choices[0].message.content,
+        content: '',
         timestamp: new Date().toISOString(),
         model: selectedModel,
         providerId: currentModel.providerId
       };
 
-      const finalMessages = [...newMessages, assistantMessage];
+      const messagesWithPlaceholder = [...newMessages, assistantMessage];
+      setMessages(messagesWithPlaceholder);
+
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta;
+                  if (delta?.content) {
+                    accumulatedContent += delta.content;
+                    
+                    // 实时更新消息内容
+                    setMessages(prev => prev.map(msg => 
+                      msg.id === assistantMessage.id 
+                        ? { ...msg, content: accumulatedContent }
+                        : msg
+                    ));
+                  }
+                } catch (parseError) {
+                  // 忽略解析错误，继续处理下一行
+                  console.warn('解析流数据失败:', parseError);
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      }
+
+      // 保存最终消息
+      const finalMessages = messagesWithPlaceholder.map(msg => 
+        msg.id === assistantMessage.id 
+          ? { ...msg, content: accumulatedContent }
+          : msg
+      );
       setMessages(finalMessages);
       saveMessages(finalMessages);
     } catch (error) {
@@ -233,7 +296,7 @@ const ChatInterface: React.FC = () => {
   };
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', padding: 24 }}>
+    <div style={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column', padding: 24 }}>
       <Card 
         style={{ 
           flex: 1, 

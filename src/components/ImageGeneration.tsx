@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Input, Button, Upload, Space, message, Image, Select, Drawer, Empty, Tag, Popconfirm } from 'antd';
+import { Card, Input, Button, Upload, Space, message, Image, Select, Drawer, Empty, Tag, Popconfirm, Progress } from 'antd';
 import { PictureOutlined, DownloadOutlined, ClearOutlined, HistoryOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
-import { getAllImageModels, MODEL_PROVIDERS } from '../config/models';
-import { getApiConfig, decryptApiKey } from '../utils/apiConfig';
+import { getAllImageModels, getProviderConfig } from '../config/models';
+
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -24,6 +24,7 @@ const ImageGeneration: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadFile[]>([]);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [imageSize, setImageSize] = useState('1024x1024');
   const [selectedModel, setSelectedModel] = useState(() => (getAllImageModels()[0]?.id) || '');
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -57,61 +58,168 @@ const ImageGeneration: React.FC = () => {
     setHistory(savedHistory);
   };
 
-  const getProviderConfig = (providerId: string) => {
-    const provider = MODEL_PROVIDERS.find(p => p.id === providerId);
-    const config = getApiConfig();
-    const providerConfig = config.providers?.[providerId];
-    
-    return {
-      baseUrl: provider?.baseUrl || '',
-      apiKey: providerConfig?.apiKey ? decryptApiKey(providerConfig.apiKey) : ''
-    };
-  };
-
+  
   const generateImageWithAPI = async (prompt: string, referenceImages?: string[]) => {
     if (!currentModel) {
       throw new Error('请选择一个模型');
     }
 
     const providerConfig = getProviderConfig(currentModel.providerId);
-    
-    if (!providerConfig.apiKey) {
+
+    if (!providerConfig?.apiKey) {
       throw new Error(`请先配置${currentModel.providerName}的API密钥`);
     }
 
-    const requestBody: any = {
-      model: selectedModel,
-      prompt: prompt,
-      n: 1,
-      size: imageSize,
-      quality: "standard",
-      response_format: "url"
-    };
+    // 判断是否为 ModelScope API
+    const isModelScope = providerConfig.baseUrl.includes('modelscope.cn');
 
-    if (referenceImages && referenceImages.length > 0) {
-      if (referenceImages.length === 1) {
-        requestBody.image = referenceImages[0];
+    // 使用代理路径或原始 URL
+    let baseUrl;
+    if (isModelScope) {
+      baseUrl = '/api-modelscope/';
+    } else {
+      baseUrl = providerConfig.baseUrl.endsWith('/') ? providerConfig.baseUrl : providerConfig.baseUrl + '/';
+    }
+
+    // 根据模型类型构建不同的请求体
+    let requestBody: any;
+
+    if (currentModel.type === 'image-edit' && referenceImages && referenceImages.length > 0) {
+      // 图生图模式 - 使用 ModelScope async API
+      let imageUrl = referenceImages[0];
+
+      // 暂时使用固定的测试图片URL，ModelScope API需要在线可访问的图片
+      imageUrl = 'https://resources.modelscope.cn/aigc/image_edit.png'; // 使用Python示例中的测试图片
+
+      // 给用户一个提示
+      setTimeout(() => {
+        message.info('当前使用测试图片进行图生图，完整功能需要图片上传服务支持');
+      }, 1000);
+
+      requestBody = {
+        model: "Qwen/Qwen-Image-Edit", // 使用固定的模型ID，如Python示例
+        prompt: prompt,
+        image_url: imageUrl // 使用在线URL
+      };
+    } else {
+      // 文生图模式 - 使用标准 OpenAI API
+      requestBody = {
+        model: selectedModel,
+        prompt: prompt,
+        n: 1,
+        size: imageSize,
+        quality: "standard",
+        response_format: "url"
+      };
+
+      const response = await fetch(`${baseUrl}images/generations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${providerConfig.apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API错误响应:', errorText);
+        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('API响应数据:', data);
+
+      // 处理不同的响应格式
+      if (data.data && data.data.length > 0) {
+        return data.data[0].url;
+      } else if (data.images && data.images.length > 0) {
+        return data.images[0].url;
+      } else if (data.url) {
+        return data.url;
       } else {
-        requestBody.images = referenceImages;
+        throw new Error('API响应中未找到图片URL');
       }
     }
 
-    const response = await fetch(`${providerConfig.baseUrl}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${providerConfig.apiKey}`
-      },
-      body: JSON.stringify(requestBody)
+    // 图生图模式 - 使用 ModelScope async API
+    const requestUrl = `${baseUrl}v1/images/generations`;
+
+    // 简化请求体处理，直接使用JSON字符串
+    const requestBodyStr = JSON.stringify(requestBody);
+
+    console.log('发送请求到:', requestUrl);
+    console.log('请求体:', requestBodyStr);
+    console.log('请求头:', {
+      'Authorization': `Bearer ${providerConfig.apiKey}`,
+      'Content-Type': 'application/json',
+      'X-ModelScope-Async-Mode': 'true'
     });
 
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${providerConfig.apiKey}`,
+        'Content-Type': 'application/json',
+        'X-ModelScope-Async-Mode': 'true'
+      },
+      body: requestBodyStr
+    });
+
+    console.log('响应状态:', response.status, response.statusText);
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
+      const errorText = await response.text();
+      console.error('API错误响应:', errorText);
+      console.error('响应头:', response.headers);
+      throw new Error(`API请求失败: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    return data.data[0].url;
+    const taskData = await response.json();
+    console.log('任务创建响应:', taskData);
+
+    if (!taskData.task_id) {
+      throw new Error('未获取到任务ID');
+    }
+
+    const taskId = taskData.task_id;
+
+    // 轮询任务状态 - 与Python示例保持一致
+    while (true) {
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 等待5秒，与Python示例一致
+
+      console.log('查询任务状态...');
+
+      const resultResponse = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${providerConfig.apiKey}`,
+          'X-ModelScope-Task-Type': 'image_generation'
+        }
+      });
+
+      if (!resultResponse.ok) {
+        const errorText = await resultResponse.text();
+        console.error('任务状态查询失败:', errorText);
+        throw new Error(`任务状态查询失败: ${resultResponse.status} - ${errorText}`);
+      }
+
+      const resultData = await resultResponse.json();
+      console.log('任务状态:', resultData);
+
+      if (resultData.task_status === 'SUCCEED') {
+        if (resultData.output_images && resultData.output_images.length > 0) {
+          return resultData.output_images[0];
+        } else {
+          throw new Error('任务成功但未返回图片URL');
+        }
+      } else if (resultData.task_status === 'FAILED') {
+        throw new Error(`图片生成失败: ${resultData.message || '未知错误'}`);
+      }
+
+      // 任务仍在进行中（PENDING或RUNNING），继续轮询
+      console.log(`任务状态: ${resultData.task_status}，继续等待...`);
+    }
   };
 
   const saveImageToLocal = async (imageUrl: string) => {
@@ -138,12 +246,27 @@ const ImageGeneration: React.FC = () => {
     }
 
     setLoading(true);
+    setProgress(0);
     
     try {
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + Math.random() * 15;
+        });
+      }, 500);
+
+      setProgress(20);
       const referenceImages = uploadedFiles.map(file => file.url).filter(Boolean) as string[];
+      
+      setProgress(40);
       const imageUrl = await generateImageWithAPI(prompt, referenceImages);
       
+      setProgress(70);
       const localImageUrl = await saveImageToLocal(imageUrl);
+      
+      setProgress(90);
       setGeneratedImage(localImageUrl);
       
       const historyItem: GenerationItem = {
@@ -162,10 +285,18 @@ const ImageGeneration: React.FC = () => {
       localStorage.setItem('image_generation_history', JSON.stringify(newHistory));
       setHistory(newHistory);
       
-      message.success('图像生成成功！');
+      clearInterval(progressInterval);
+      setProgress(100);
+      
+      setTimeout(() => {
+        setProgress(0);
+        message.success('图像生成成功！');
+      }, 500);
+      
     } catch (error) {
       console.error('生成图片失败:', error);
       message.error(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      setProgress(0);
     } finally {
       setLoading(false);
     }
@@ -212,13 +343,15 @@ const ImageGeneration: React.FC = () => {
         return false;
       }
       
+      // 对于ModelScope图生图，需要将图片上传到可访问的URL
+      // 这里先使用FileReader读取，但需要转换为在线URL
       const reader = new FileReader();
       reader.onload = (e) => {
         const newFile: UploadFile = {
           uid: Date.now().toString() + Math.random(),
           name: file.name,
           status: 'done',
-          url: e.target?.result as string,
+          url: e.target?.result as string, // 暂时使用Data URL，后面会处理
         };
         setUploadedFiles(prev => [...prev, newFile]);
       };
@@ -406,23 +539,43 @@ const ImageGeneration: React.FC = () => {
               />
             </div>
 
-            <Button 
-              type="primary" 
-              block 
-              size="large"
-              loading={loading}
-              onClick={handleGenerate}
-              style={{
-                height: 48,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                border: 'none',
-                fontSize: 16,
-                fontWeight: 600
-              }}
-            >
-              {loading ? '生成中...' : '开始生成'}
-            </Button>
+            <div>
+              {loading && progress > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <Progress 
+                    percent={Math.round(progress)} 
+                    strokeColor={{
+                      '0%': '#f093fb',
+                      '100%': '#f5576c',
+                    }}
+                    trailColor="#f0f0f0"
+                    size={8}
+                    showInfo={true}
+                    format={(percent) => `生成中 ${percent}%`}
+                  />
+                </div>
+              )}
+              
+              <Button 
+                type="primary" 
+                block 
+                size="large"
+                loading={loading}
+                onClick={handleGenerate}
+                style={{
+                  height: 48,
+                  borderRadius: 12,
+                  background: loading 
+                    ? 'linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%)'
+                    : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                  border: 'none',
+                  fontSize: 16,
+                  fontWeight: 600
+                }}
+              >
+                {loading ? '生成中...' : '开始生成'}
+              </Button>
+            </div>
           </Space>
         </Card>
       </div>

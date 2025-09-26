@@ -1,279 +1,300 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Button, message, Space, Typography, Divider, Tabs, Card } from 'antd';
-import { EyeInvisibleOutlined, EyeTwoTone, InfoCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { MODEL_PROVIDERS } from '../config/models';
-import { getApiConfig, updateProviderConfig, decryptApiKey } from '../utils/apiConfig';
+import { Card, Input, Button, Space, message, Typography, Divider, Tag, Alert, Modal, List } from 'antd';
+import { SettingOutlined, EyeOutlined, EyeInvisibleOutlined, SaveOutlined, ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { initializeConfig, getProvidersConfigSync } from '../config/models';
+import { getApiConfig, updateProviderConfig, encryptApiKey, decryptApiKey } from '../utils/apiConfig';
 
-const { Text, Link } = Typography;
-const { TabPane } = Tabs;
+const { Text, Title, Link } = Typography;
+const { TextArea } = Input;
 
-interface ApiConfigProps {
-  visible: boolean;
-  onCancel: () => void;
+interface ProviderConfigState {
+  [providerId: string]: {
+    apiKey: string;
+    showKey: boolean;
+  };
 }
 
-const ApiConfig: React.FC<ApiConfigProps> = ({ visible, onCancel }) => {
-  const [form] = Form.useForm();
+const ApiConfig: React.FC = () => {
+  const [configs, setConfigs] = useState<ProviderConfigState>({});
   const [loading, setLoading] = useState(false);
-  const [testingProvider, setTestingProvider] = useState<string | null>(null);
-  const [providerStatus, setProviderStatus] = useState<{[key: string]: 'success' | 'error' | 'testing' | null}>({});
+  const [infoVisible, setInfoVisible] = useState(false);
 
   useEffect(() => {
-    if (visible) {
-      loadConfigs();
-    }
-  }, [visible]);
+    loadConfigs();
+  }, []);
 
-  const loadConfigs = () => {
-    const config = getApiConfig();
-    const formValues: any = {};
-    
-    MODEL_PROVIDERS.forEach(provider => {
-      const providerConfig = config.providers?.[provider.id];
-      if (providerConfig?.apiKey) {
-        formValues[`${provider.id}_apiKey`] = decryptApiKey(providerConfig.apiKey);
-      }
-    });
-    
-    form.setFieldsValue(formValues);
-  };
-
-  const handleSave = async () => {
+  const loadConfigs = async () => {
     try {
-      setLoading(true);
-      const values = await form.validateFields();
+      await initializeConfig();
+      const providersConfig = getProvidersConfigSync();
+      const apiConfig = getApiConfig();
       
-      MODEL_PROVIDERS.forEach(provider => {
-        const apiKey = values[`${provider.id}_apiKey`];
-        if (apiKey) {
-          updateProviderConfig(provider.id, apiKey);
-        }
+      const newConfigs: ProviderConfigState = {};
+      
+      providersConfig.providers.forEach(provider => {
+        const localConfig = apiConfig.providers?.[provider.id];
+        newConfigs[provider.id] = {
+          apiKey: localConfig?.apiKey ? decryptApiKey(localConfig.apiKey) : provider.apiKey || '',
+          showKey: false
+        };
       });
       
-      message.success('配置保存成功！');
-      onCancel();
+      setConfigs(newConfigs);
+    } catch (error) {
+      console.error('加载配置失败:', error);
+      message.error('加载配置失败');
+    }
+  };
+
+  const handleApiKeyChange = (providerId: string, value: string) => {
+    setConfigs(prev => ({
+      ...prev,
+      [providerId]: {
+        ...prev[providerId],
+        apiKey: value
+      }
+    }));
+  };
+
+  const toggleKeyVisibility = (providerId: string) => {
+    setConfigs(prev => ({
+      ...prev,
+      [providerId]: {
+        ...prev[providerId],
+        showKey: !prev[providerId]?.showKey
+      }
+    }));
+  };
+
+  const saveConfig = async (providerId: string) => {
+    const config = configs[providerId];
+    if (!config) return;
+
+    setLoading(true);
+    try {
+      await updateProviderConfig(providerId, config.apiKey || '');
+      message.success('配置保存成功');
     } catch (error) {
       console.error('保存配置失败:', error);
+      message.error('保存配置失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const testConnection = async (providerId: string) => {
+  const saveAllConfigs = async () => {
+    setLoading(true);
     try {
-      setTestingProvider(providerId);
-      setProviderStatus(prev => ({ ...prev, [providerId]: 'testing' }));
-      
-      const values = form.getFieldsValue();
-      const apiKey = values[`${providerId}_apiKey`];
-      
-      if (!apiKey) {
-        message.warning('请先输入API密钥');
-        setProviderStatus(prev => ({ ...prev, [providerId]: null }));
-        return;
+      for (const [providerId, config] of Object.entries(configs)) {
+        await updateProviderConfig(providerId, config.apiKey || '');
       }
-
-      const provider = MODEL_PROVIDERS.find(p => p.id === providerId);
-      if (!provider) {
-        throw new Error('未找到提供商配置');
-      }
-
-      const response = await fetch(`${provider.baseUrl}/models`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`
-        }
-      });
-
-      if (response.ok) {
-        message.success(`${provider.name} 连接测试成功！`);
-        setProviderStatus(prev => ({ ...prev, [providerId]: 'success' }));
-      } else {
-        message.error(`${provider.name} 连接测试失败，请检查配置`);
-        setProviderStatus(prev => ({ ...prev, [providerId]: 'error' }));
-      }
+      message.success('所有配置保存成功');
     } catch (error) {
-      const provider = MODEL_PROVIDERS.find(p => p.id === providerId);
-      message.error(`${provider?.name} 连接测试失败，请检查网络和配置`);
-      setProviderStatus(prev => ({ ...prev, [providerId]: 'error' }));
+      console.error('保存配置失败:', error);
+      message.error('保存配置失败');
     } finally {
-      setTestingProvider(null);
+      setLoading(false);
     }
   };
 
-  const getStatusIcon = (providerId: string) => {
-    const status = providerStatus[providerId];
-    switch (status) {
-      case 'success':
-        return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-      case 'error':
-        return <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />;
-      case 'testing':
-        return <div className="loading-spinner" />;
-      default:
-        return null;
-    }
-  };
+  const providersConfig = getProvidersConfigSync();
 
   return (
-    <Modal
-      title="API配置管理"
-      open={visible}
-      onCancel={onCancel}
-      footer={[
-        <Button key="cancel" onClick={onCancel}>
-          取消
-        </Button>,
-        <Button key="save" type="primary" onClick={handleSave} loading={loading}>
-          保存配置
-        </Button>
-      ]}
-      width={800}
-      style={{ top: 20 }}
-    >
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ 
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
-          padding: '16px', 
-          borderRadius: '8px',
-          color: '#fff',
-          marginBottom: 16
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <InfoCircleOutlined />
-            <Text strong style={{ color: '#fff' }}>多提供商AI平台配置</Text>
-          </div>
-          <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13 }}>
-            配置多个AI服务提供商，享受更丰富的模型选择和更稳定的服务体验
-          </Text>
-        </div>
+    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <SettingOutlined />
+          API 配置管理
+        </Title>
+        <Text type="secondary">
+          配置各个AI服务提供商的API密钥，密钥将在本地加密存储
+        </Text>
       </div>
 
-      <Form form={form} layout="vertical">
-        <Tabs defaultActiveKey="siliconflow" type="card">
-          {MODEL_PROVIDERS.map(provider => (
-            <TabPane 
-              tab={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Alert
+        message="安全提示"
+        description="所有API密钥均在浏览器本地加密存储，不会上传到任何服务器。请妥善保管您的密钥。"
+        type="info"
+        showIcon
+        style={{ marginBottom: 24 }}
+        action={
+          <Button size="small" type="link" onClick={() => setInfoVisible(true)}>
+            了解更多
+          </Button>
+        }
+      />
+
+      <Space direction="vertical" style={{ width: '100%' }} size="large">
+        {providersConfig.providers.map((provider: any) => (
+          <Card
+            key={provider.id}
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span>{provider.name}</span>
-                  {getStatusIcon(provider.id)}
+                  <Tag color={provider.id === providersConfig.defaultProvider ? 'green' : 'default'}>
+                    {provider.id === providersConfig.defaultProvider ? '默认' : '备用'}
+                  </Tag>
                 </div>
-              } 
-              key={provider.id}
-            >
-              <Card size="small" style={{ marginBottom: 16 }}>
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong style={{ fontSize: 16, color: '#1f2937' }}>
-                    {provider.name}
-                  </Text>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-                    API地址: {provider.baseUrl}
-                  </div>
-                </div>
-
-                <Form.Item
-                  label={`${provider.name} API密钥`}
-                  name={`${provider.id}_apiKey`}
-                  rules={[
-                    { 
-                      required: false, 
-                      message: `请输入${provider.name}的API密钥` 
-                    }
-                  ]}
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<SaveOutlined />}
+                  loading={loading}
+                  onClick={() => saveConfig(provider.id)}
                 >
-                  <Input.Password
-                    placeholder={`请输入${provider.name}的API密钥`}
-                    iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-                    suffix={
-                      <Button 
-                        type="link" 
-                        size="small"
-                        loading={testingProvider === provider.id}
-                        onClick={() => testConnection(provider.id)}
-                        style={{ padding: 0, height: 'auto' }}
-                      >
-                        测试
-                      </Button>
-                    }
-                  />
-                </Form.Item>
-
+                  保存
+                </Button>
+              </div>
+            }
+            style={{ borderRadius: 8 }}
+          >
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <div>
+                <Text strong>API 基础地址:</Text>
                 <div style={{ 
-                  background: '#f8fafc', 
-                  padding: '12px', 
-                  borderRadius: '6px',
-                  marginTop: 12
+                  marginTop: 4, 
+                  padding: '8px 12px', 
+                  background: '#f5f5f5', 
+                  borderRadius: 4,
+                  fontFamily: 'monospace',
+                  fontSize: 13
                 }}>
-                  <Text strong style={{ fontSize: 13, color: '#374151' }}>
-                    支持的模型类型:
+                  {provider.baseUrl}
+                </div>
+              </div>
+
+              <div>
+                <Text strong>API 密钥:</Text>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <Input.Password
+                    value={configs[provider.id]?.apiKey || ''}
+                    onChange={(e) => handleApiKeyChange(provider.id, e.target.value)}
+                    placeholder={`请输入 ${provider.name} 的 API 密钥`}
+                    visibilityToggle={{
+                      visible: configs[provider.id]?.showKey,
+                      onVisibleChange: () => toggleKeyVisibility(provider.id)
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                </div>
+              </div>
+
+              {provider.description && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {provider.description}
                   </Text>
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                      💬 对话模型: {provider.models.chat.length} 个
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                      🎨 图像模型: {provider.models.image.length} 个
-                    </div>
-                    {provider.models.video && (
-                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                        🎬 视频模型: {provider.models.video.length} 个
-                      </div>
-                    )}
-                    {provider.models.audio && (
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>
-                        🎵 音频模型: {provider.models.audio.length} 个
-                      </div>
-                    )}
+                </div>
+              )}
+
+              <div>
+                <Text strong style={{ fontSize: 13 }}>支持的模型:</Text>
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#666' }}>💬 文本对话:</Text>
+                    <Tag color="blue">{provider.models.chatText.length} 个</Tag>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#666' }}>👁️ 视觉对话:</Text>
+                    <Tag color="green">{provider.models.chatVision.length} 个</Tag>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#666' }}>🎨 图像生成:</Text>
+                    <Tag color="orange">{provider.models.imageGeneration.length} 个</Tag>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#666' }}>✏️ 图像编辑:</Text>
+                    <Tag color="purple">{provider.models.imageEdit.length} 个</Tag>
                   </div>
                 </div>
+              </div>
 
-                {provider.id === 'siliconflow' && (
-                  <div style={{ marginTop: 12 }}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      💡 推荐使用 <Link href="https://siliconflow.cn/" target="_blank">硅基流动</Link> 访问魔塔社区模型
-                    </Text>
-                  </div>
-                )}
+              {provider.id === 'modelscope' && (
+                <div style={{ marginTop: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    💡 推荐使用 <Link href="https://modelscope.cn/" target="_blank">魔塔社区</Link> 获取API密钥
+                  </Text>
+                </div>
+              )}
 
-                {provider.id === 'openai' && (
-                  <div style={{ marginTop: 12 }}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      💡 需要 <Link href="https://platform.openai.com/" target="_blank">OpenAI官方API密钥</Link>
-                    </Text>
-                  </div>
-                )}
-              </Card>
-            </TabPane>
-          ))}
-        </Tabs>
-      </Form>
+              {provider.id === 'newapi' && (
+                <div style={{ marginTop: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    💡 请确保您的 New API 服务支持 OpenAI 兼容格式
+                  </Text>
+                </div>
+              )}
+            </Space>
+          </Card>
+        ))}
+      </Space>
 
-      <Divider />
-
-      <div style={{ 
-        background: '#f6f8fa', 
-        padding: '16px', 
-        borderRadius: '6px'
-      }}>
-        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          <Text strong style={{ color: '#374151' }}>
-            <InfoCircleOutlined /> 安全说明
-          </Text>
-          
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            • 所有API密钥均使用AES加密存储在本地浏览器中，不会上传到服务器
-          </Text>
-          
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            • 支持多个提供商同时配置，系统会根据选择的模型自动使用对应的API
-          </Text>
-          
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            • 建议定期更新API密钥以确保账户安全
-          </Text>
+      <div style={{ marginTop: 32, textAlign: 'center' }}>
+        <Space>
+          <Button
+            type="primary"
+            size="large"
+            icon={<SaveOutlined />}
+            loading={loading}
+            onClick={saveAllConfigs}
+          >
+            保存所有配置
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadConfigs}
+          >
+            重新加载
+          </Button>
         </Space>
       </div>
-    </Modal>
+
+      <Modal
+        title="关于API配置"
+        open={infoVisible}
+        onCancel={() => setInfoVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setInfoVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={600}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <div>
+            <Title level={5}>🔒 数据安全</Title>
+            <List size="small">
+              <List.Item>• 所有API密钥使用AES-256加密算法在本地存储</List.Item>
+              <List.Item>• 密钥不会发送到任何第三方服务器</List.Item>
+              <List.Item>• 清除浏览器数据会同时清除已保存的密钥</List.Item>
+            </List>
+          </div>
+
+          <Divider />
+
+          <div>
+            <Title level={5}>⚙️ 配置优先级</Title>
+            <List size="small">
+              <List.Item>• 本地保存的密钥优先级最高</List.Item>
+              <List.Item>• 如果本地没有配置，将使用默认配置</List.Item>
+              <List.Item>• 可以为不同提供商配置不同的密钥</List.Item>
+            </List>
+          </div>
+
+          <Divider />
+
+          <div>
+            <Title level={5}>🔧 使用建议</Title>
+            <List size="small">
+              <List.Item>• 建议定期更换API密钥以确保安全</List.Item>
+              <List.Item>• 不同功能可以使用不同的提供商</List.Item>
+              <List.Item>• 遇到问题时可以尝试重新加载配置</List.Item>
+            </List>
+          </div>
+        </Space>
+      </Modal>
+    </div>
   );
 };
 

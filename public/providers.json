@@ -1,0 +1,100 @@
+{
+  "defaultProvider": "modelscope",
+  "providers": [
+    {
+      "id": "modelscope",
+      "name": "魔塔社区",
+      "baseUrl": "https://api-inference.modelscope.cn/v1",
+      "apiKey": "ms-4cfbede1-f17d-4ec4-9aee-fc348497da51",
+      "description": "魔塔社区提供的AI模型服务",
+      "models": {
+        "chatText": [
+          {
+            "id": "iic/Tongyi-DeepResearch-30B-A3B",
+            "name": "通义深度研究 30B",
+            "maxTokens": 8000,
+            "supportImages": false
+          },
+          {
+            "id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "name": "Qwen3 编程助手 480B",
+            "maxTokens": 32000,
+            "supportImages": false
+          },
+          {
+            "id": "moonshotai/Kimi-K2-Instruct-0905",
+            "name": "Kimi K2 对话模型",
+            "maxTokens": 128000,
+            "supportImages": false
+          },
+          {
+            "id": "ZhipuAI/GLM-4.5",
+            "name": "智谱 GLM-4.5",
+            "maxTokens": 8000,
+            "supportImages": false
+          }
+        ],
+        "chatVision": [
+          {
+            "id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
+            "name": "Qwen3 视觉语言模型 235B",
+            "maxTokens": 8000,
+            "supportImages": true
+          },
+          {
+            "id": "stepfun-ai/step3",
+            "name": "阶跃 Step3 多模态",
+            "maxTokens": 4000,
+            "supportImages": true
+          }
+        ],
+        "imageGeneration": [
+          {
+            "id": "black-forest-labs/FLUX.1-Krea-dev",
+            "name": "FLUX.1 Krea 开发版",
+            "type": "image-generation"
+          },
+          {
+            "id": "Qwen/Qwen-Image",
+            "name": "Qwen 图像生成",
+            "type": "image-generation"
+          }
+        ],
+        "imageEdit": [
+          {
+            "id": "Qwen/Qwen-Image-Edit",
+            "name": "Qwen 图像编辑",
+            "type": "image-edit"
+          }
+        ]
+      }
+    },
+    {
+      "id": "newapi",
+      "name": "New API 渠道",
+      "baseUrl": "https://api.zhongjixun.com/v1",
+      "apiKey": "",
+      "description": "自建或第三方 New API 兼容服务",
+      "models": {
+        "chatText": [
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o",
+            "maxTokens": 128000,
+            "supportImages": false
+          }
+        ],
+        "chatVision": [
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o 视觉版",
+            "maxTokens": 128000,
+            "supportImages": true
+          }
+        ],
+        "imageGeneration": [],
+        "imageEdit": []
+      }
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button } from 'antd';
-import { MessageOutlined, PictureOutlined, SettingOutlined } from '@ant-design/icons';
+import { Layout, Menu } from 'antd';
+import { MessageOutlined, PictureOutlined } from '@ant-design/icons';
 import ChatInterface from './components/ChatInterface';
 import ImageGeneration from './components/ImageGeneration';
-import ApiConfig from './components/ApiConfig';
+
 import './App.css';
 
 const { Header, Content, Sider } = Layout;
@@ -12,7 +12,6 @@ type AppMode = 'chat' | 'image';
 
 const App: React.FC = () => {
   const [currentMode, setCurrentMode] = useState<AppMode>('chat');
-  const [configModalVisible, setConfigModalVisible] = useState(false);
 
   const menuItems = [
     {
@@ -39,7 +38,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header style={{ 
         background: '#fff', 
         padding: '0 24px', 
@@ -65,29 +64,16 @@ const App: React.FC = () => {
           }}>
             CA
           </div>
-          <div>
+          <div style={{lineHeight: 1.5 }}>
             <h1 style={{ margin: 0, color: '#1f2937', fontSize: '20px', fontWeight: 600 }}>
               Creative Ark
             </h1>
-            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2, lineHeight: 1 }}>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2 }}>
               多模态AI创作平台
             </div>
           </div>
         </div>
-        <div>
-          <Button 
-            type="text" 
-            icon={<SettingOutlined />}
-            onClick={() => setConfigModalVisible(true)}
-            style={{ 
-              borderRadius: 8,
-              color: '#6b7280',
-              border: '1px solid #e5e7eb'
-            }}
-          >
-            设置
-          </Button>
-        </div>
+
       </Header>
       
       <Layout>
@@ -117,10 +103,7 @@ const App: React.FC = () => {
         </Content>
       </Layout>
 
-      <ApiConfig 
-        visible={configModalVisible}
-        onCancel={() => setConfigModalVisible(false)}
-      />
+
     </Layout>
   );
 };
