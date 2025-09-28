@@ -70,16 +70,8 @@ const ImageGeneration: React.FC = () => {
       throw new Error(`请先配置${currentModel.providerName}的API密钥`);
     }
 
-    // 判断是否为 ModelScope API
-    const isModelScope = providerConfig.baseUrl.includes('modelscope.cn');
-
-    // 使用代理路径或原始 URL
-    let baseUrl;
-    if (isModelScope) {
-      baseUrl = '/api-modelscope/';
-    } else {
-      baseUrl = providerConfig.baseUrl.endsWith('/') ? providerConfig.baseUrl : providerConfig.baseUrl + '/';
-    }
+    // 直接使用配置的 baseUrl，就像文本对话一样
+    const baseUrl = providerConfig.baseUrl.endsWith('/') ? providerConfig.baseUrl : providerConfig.baseUrl + '/';
 
     // 根据模型类型构建不同的请求体
     let requestBody: any;
@@ -143,7 +135,7 @@ const ImageGeneration: React.FC = () => {
     }
 
     // 图生图模式 - 使用 ModelScope async API
-    const requestUrl = `${baseUrl}v1/images/generations`;
+    const requestUrl = `${baseUrl}images/generations`;
 
     // 简化请求体处理，直接使用JSON字符串
     const requestBodyStr = JSON.stringify(requestBody);
@@ -190,7 +182,7 @@ const ImageGeneration: React.FC = () => {
 
       console.log('查询任务状态...');
 
-      const resultResponse = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
+      const resultResponse = await fetch(`${baseUrl}tasks/${taskId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${providerConfig.apiKey}`,
@@ -389,7 +381,13 @@ const ImageGeneration: React.FC = () => {
   };
 
   return (
-    <div style={{ height: '100vh', display: 'flex', gap: 24, padding: 24 }}>
+    <div style={{ 
+      height: '100%', 
+      display: 'flex', 
+      gap: window.innerWidth <= 768 ? 12 : 24, 
+      padding: window.innerWidth <= 768 ? 12 : 24,
+      overflow: 'hidden'
+    }}>
       <div style={{ width: 400, flexShrink: 0 }}>
         <Card 
           style={{ 

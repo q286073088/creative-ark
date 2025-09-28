@@ -69,7 +69,20 @@ const VisionChat: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll to bottom if user is already near the bottom
+    const shouldAutoScroll = () => {
+      const messagesContainer = document.querySelector('.custom-scrollbar');
+      if (messagesContainer) {
+        const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
+        // If user is within 100px of the bottom, auto-scroll
+        return scrollHeight - scrollTop - clientHeight < 100;
+      }
+      return true; // Default to true if container not found
+    };
+
+    if (shouldAutoScroll()) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const saveMessages = (newMessages: Message[]) => {

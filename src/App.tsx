@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
-import { Layout, Menu } from 'antd';
-import { MessageOutlined, PictureOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, Button } from 'antd';
+import { 
+  MessageOutlined, 
+  PictureOutlined, 
+  MenuUnfoldOutlined,
+  MenuFoldOutlined
+} from '@ant-design/icons';
 import ChatInterface from './components/ChatInterface';
 import ImageGeneration from './components/ImageGeneration';
-
+import { initializeConfig } from './config/models';
 import './App.css';
 
 const { Header, Content, Sider } = Layout;
@@ -12,6 +17,11 @@ type AppMode = 'chat' | 'image';
 
 const App: React.FC = () => {
   const [currentMode, setCurrentMode] = useState<AppMode>('chat');
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    initializeConfig();
+  }, []);
 
   const menuItems = [
     {
@@ -37,6 +47,31 @@ const App: React.FC = () => {
     }
   };
 
+  // const userMenu = (
+  //   <Menu
+  //     items={[
+  //       {
+  //         key: '1',
+  //         label: '设置',
+  //         icon: <SettingOutlined />,
+  //       },
+  //       {
+  //         key: '2',
+  //         label: '主题切换',
+  //         icon: <BulbOutlined />,
+  //       },
+  //       {
+  //         type: 'divider',
+  //       },
+  //       {
+  //         key: '3',
+  //         label: '关于',
+  //         icon: <GithubOutlined />,
+  //       },
+  //     ]}
+  //   />
+  // );
+
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header style={{ 
@@ -49,6 +84,12 @@ const App: React.FC = () => {
         boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
+          <Button
+            type="text"
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={() => setCollapsed(!collapsed)}
+            style={{ marginRight: 12 }}
+          />
           <div style={{ 
             width: 32, 
             height: 32, 
@@ -73,12 +114,19 @@ const App: React.FC = () => {
             </div>
           </div>
         </div>
-
+        {/* <Space>
+          <Dropdown overlay={userMenu} placement="bottomRight">
+            <Avatar style={{ backgroundColor: token.colorPrimary, cursor: 'pointer' }} icon={<UserOutlined />} />
+          </Dropdown>
+        </Space> */}
       </Header>
       
       <Layout>
         <Sider 
           width={240} 
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
           style={{ 
             background: '#fff', 
             borderRight: '1px solid #f0f0f0',
@@ -98,12 +146,17 @@ const App: React.FC = () => {
           />
         </Sider>
         
-        <Content style={{ background: '#f8fafc', padding: '24px' }}>
+        <Content style={{ 
+          background: '#f8fafc', 
+          padding: 0,
+          overflow: 'hidden',
+          height: 'calc(100vh - 64px)',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
           {renderContent()}
         </Content>
       </Layout>
-
-
     </Layout>
   );
 };

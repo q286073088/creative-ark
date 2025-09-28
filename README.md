@@ -56,22 +56,15 @@ npm run preview
 复制 `.env.example` 为 `.env` 并配置以下变量：
 
 ```bash
-# 默认提供商
-VITE_DEFAULT_PROVIDER=MODELSCOPE
+# API密钥配置
+# 复制此文件为.env并填入你的API密钥
 
-# 提供商列表
-VITE_PROVIDER_IDS=MODELSCOPE,newapi
+# OpenAI API密钥
+VITE_OPENAI_API_KEY=your_openai_api_key_here
 
-# 魔塔社区配置
-VITE_PROVIDER_MODELSCOPE_NAME=魔塔社区
-VITE_PROVIDER_MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
-VITE_PROVIDER_MODELSCOPE_API_KEY=YOUR_MODELSCOPE_API_KEY_HERE
+# ModelScope API密钥
+VITE_MODELSCOPE_API_KEY=ms-4c
 
-# 支持的模型类型
-VITE_PROVIDER_MODELSCOPE_CHAT_TEXT_MODELS=iic/Tongyi-DeepResearch-30B-A3B,Qwen/Qwen3-Coder-480B-A35B-Instruct,moonshotai/Kimi-K2-Instruct-0905,ZhipuAI/GLM-4.5
-VITE_PROVIDER_MODELSCOPE_CHAT_VISION_MODELS=Qwen/Qwen3-VL-235B-A22B-Instruct,stepfun-ai/step3
-VITE_PROVIDER_MODELSCOPE_IMAGE_GENERATION_MODELS=black-forest-labs/FLUX.1-Krea-dev,Qwen/Qwen-Image
-VITE_PROVIDER_MODELSCOPE_IMAGE_EDIT_MODELS=Qwen/Qwen-Image-Edit
 ```
 
 ### 支持的模型

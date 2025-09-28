@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Input, Button, Space, message, Avatar, Typography, Select, Upload, Image, Drawer, Empty, Tag, Popconfirm, Dropdown, Menu } from 'antd';
-import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined, CopyOutlined, RedoOutlined, BranchesOutlined, ExportOutlined, PlusOutlined } from '@ant-design/icons';
+import { Card, Input, Button, Space, message as antdMessage, Avatar, Typography, Select, Upload, Image, Drawer, Empty, Tag, Popconfirm } from 'antd';
+import { SendOutlined, UserOutlined, RobotOutlined, ClearOutlined, PictureOutlined, HistoryOutlined, DeleteOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { getAllChatModels, getProviderConfig, initializeConfig } from '../config/models';
-
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -17,36 +17,21 @@ interface Message {
   timestamp: string;
   model?: string;
   providerId?: string;
-  thinking?: boolean;
-  thinkingContent?: string;
-}
-
-interface ChatSession {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: string;
-  updatedAt: string;
 }
 
 const ChatInterface: React.FC = () => {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>('');
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => (getAllChatModels()[0]?.id) || '');
   const [historyVisible, setHistoryVisible] = useState(false);
-  const [sidebarVisible, setSidebarVisible] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const chatModels = getAllChatModels();
   const currentModel = chatModels.find(m => m.id === selectedModel);
   const supportsImages = currentModel?.supportImages || false;
   const noModels = chatModels.length === 0;
-
-  const currentSession = sessions.find(s => s.id === currentSessionId);
-  const messages = currentSession?.messages || [];
 
   useEffect(() => {
     const initAndSetModel = async () => {
@@ -60,134 +45,50 @@ const ChatInterface: React.FC = () => {
   }, [selectedModel]);
 
   useEffect(() => {
-    const savedSessions = localStorage.getItem('chat_sessions');
-    const savedCurrentSessionId = localStorage.getItem('current_session_id');
-
-    if (savedSessions) {
+    const savedMessages = localStorage.getItem('chat_history');
+    if (savedMessages) {
       try {
-        const parsedSessions = JSON.parse(savedSessions);
-        setSessions(parsedSessions);
-
-        if (savedCurrentSessionId && parsedSessions.find((s: ChatSession) => s.id === savedCurrentSessionId)) {
-          setCurrentSessionId(savedCurrentSessionId);
-        } else if (parsedSessions.length > 0) {
-          setCurrentSessionId(parsedSessions[0].id);
-        } else {
-          createNewSession();
-        }
+        setMessages(JSON.parse(savedMessages));
       } catch (error) {
-        console.error('加载聊天会话失败:', error);
-        createNewSession();
+        console.error('加载聊天历史失败:', error);
       }
-    } else {
-      createNewSession();
     }
   }, []);
-
-  useEffect(() => {
-    if (currentSessionId) {
-      localStorage.setItem('current_session_id', currentSessionId);
-    }
-  }, [currentSessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const saveSessions = (newSessions: ChatSession[]) => {
-    localStorage.setItem('chat_sessions', JSON.stringify(newSessions));
+  const saveMessages = (newMessages: Message[]) => {
+    localStorage.setItem('chat_history', JSON.stringify(newMessages));
   };
 
-  const createNewSession = () => {
-    const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: '新对话',
-      messages: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+  const getProviderConfigForChat = (providerId: string) => {
+    const providerConfig = getProviderConfig(providerId);
+    if (!providerConfig) {
+      return { baseUrl: '', apiKey: '' };
+    }
+    
+    return {
+      baseUrl: providerConfig.baseUrl,
+      apiKey: providerConfig.apiKey
     };
-
-    const newSessions = [...sessions, newSession];
-    setSessions(newSessions);
-    setCurrentSessionId(newSession.id);
-    saveSessions(newSessions);
   };
 
-  const deleteSession = (sessionId: string) => {
-    const newSessions = sessions.filter(s => s.id !== sessionId);
-    setSessions(newSessions);
-    saveSessions(newSessions);
-
-    if (sessionId === currentSessionId && newSessions.length > 0) {
-      setCurrentSessionId(newSessions[0].id);
-    } else if (newSessions.length === 0) {
-      createNewSession();
-    }
-  };
-
-  const updateSessionMessages = (sessionId: string, newMessages: Message[]) => {
-    const updatedSessions = sessions.map(session => {
-      if (session.id === sessionId) {
-        return {
-          ...session,
-          messages: newMessages,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return session;
-    });
-
-    setSessions(updatedSessions);
-    saveSessions(updatedSessions);
-  };
-
-  const generateSessionTitle = async (messages: Message[]) => {
-    if (messages.length < 2) return '新对话';
-
-    const userMessages = messages.filter(m => m.role === 'user');
-    if (userMessages.length === 0) return '新对话';
-
-    const lastUserMessage = userMessages[userMessages.length - 1];
-    const content = lastUserMessage.content;
-
-    if (content.length <= 20) {
-      return content;
-    }
-
-    return content.substring(0, 20) + '...';
-  };
-
-  
   const sendMessage = async () => {
     if (!inputValue.trim() && uploadedFiles.length === 0) {
-      message.warning('请输入消息内容或上传图片');
+      antdMessage.warning('请输入消息内容或上传图片');
       return;
     }
 
     if (!currentModel) {
-      message.error('请选择一个模型');
+      antdMessage.error('请选择一个模型');
       return;
     }
 
-    const providerConfig = getProviderConfig(currentModel.providerId);
-
-    if (!providerConfig) {
-      message.error('提供商配置不存在');
-      return;
-    }
-
-    const isModelScope = providerConfig.baseUrl.includes('modelscope.cn');
-
-    // 使用代理路径或原始 URL
-    let baseUrl;
-    if (isModelScope) {
-      baseUrl = '/api-modelscope/';
-    } else {
-      baseUrl = providerConfig.baseUrl.endsWith('/') ? providerConfig.baseUrl : providerConfig.baseUrl + '/';
-    }
-    const apiKey = providerConfig.apiKey;
+    const { baseUrl, apiKey } = getProviderConfigForChat(currentModel.providerId);
     if (!apiKey) {
-      message.error(`请先配置${currentModel.providerName}的API密钥`);
+      antdMessage.error(`请先配置${currentModel.providerName}的API密钥`);
       return;
     }
 
@@ -202,7 +103,7 @@ const ChatInterface: React.FC = () => {
     };
 
     const newMessages = [...messages, userMessage];
-    updateSessionMessages(currentSessionId, newMessages);
+    setMessages(newMessages);
     setInputValue('');
     setUploadedFiles([]);
     setLoading(true);
@@ -244,7 +145,7 @@ const ChatInterface: React.FC = () => {
         stream: true
       };
 
-      const response = await fetch(`${baseUrl}v1/chat/completions`, {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -265,12 +166,11 @@ const ChatInterface: React.FC = () => {
         content: '',
         timestamp: new Date().toISOString(),
         model: selectedModel,
-        providerId: currentModel.providerId,
-        thinking: currentModel?.name?.toLowerCase().includes('think') || currentModel?.name?.toLowerCase().includes('思考')
+        providerId: currentModel.providerId
       };
 
       const messagesWithPlaceholder = [...newMessages, assistantMessage];
-      updateSessionMessages(currentSessionId, messagesWithPlaceholder);
+      setMessages(messagesWithPlaceholder);
 
       // 处理流式响应
       const reader = response.body?.getReader();
@@ -298,23 +198,11 @@ const ChatInterface: React.FC = () => {
                     accumulatedContent += delta.content;
                     
                     // 实时更新消息内容
-                    if (assistantMessage.thinking && accumulatedContent.includes('</think>')) {
-                      const thinkEndIndex = accumulatedContent.indexOf('</think>');
-                      const thinkingContent = accumulatedContent.substring(0, thinkEndIndex + 8);
-                      const responseContent = accumulatedContent.substring(thinkEndIndex + 8);
-
-                      updateSessionMessages(currentSessionId, messagesWithPlaceholder.map(msg =>
-                        msg.id === assistantMessage.id
-                          ? { ...msg, content: responseContent, thinkingContent: thinkingContent }
-                          : msg
-                      ));
-                    } else {
-                      updateSessionMessages(currentSessionId, messagesWithPlaceholder.map(msg =>
-                        msg.id === assistantMessage.id
-                          ? { ...msg, content: accumulatedContent }
-                          : msg
-                      ));
-                    }
+                    setMessages(prev => prev.map(msg => 
+                      msg.id === assistantMessage.id 
+                        ? { ...msg, content: accumulatedContent }
+                        : msg
+                    ));
                   }
                 } catch (parseError) {
                   // 忽略解析错误，继续处理下一行
@@ -329,36 +217,16 @@ const ChatInterface: React.FC = () => {
       }
 
       // 保存最终消息
-      let finalContent = accumulatedContent;
-      let finalThinkingContent = undefined;
-
-      if (assistantMessage.thinking && accumulatedContent.includes('</think>')) {
-        const thinkEndIndex = accumulatedContent.indexOf('</think>');
-        finalThinkingContent = accumulatedContent.substring(0, thinkEndIndex + 8);
-        finalContent = accumulatedContent.substring(thinkEndIndex + 8);
-      }
-
-      const finalMessages = messagesWithPlaceholder.map(msg =>
-        msg.id === assistantMessage.id
-          ? { ...msg, content: finalContent, thinkingContent: finalThinkingContent }
+      const finalMessages = messagesWithPlaceholder.map(msg => 
+        msg.id === assistantMessage.id 
+          ? { ...msg, content: accumulatedContent }
           : msg
       );
-
-      updateSessionMessages(currentSessionId, finalMessages);
-
-      // 生成会话标题
-      const title = await generateSessionTitle(finalMessages);
-      const updatedSessions = sessions.map(session => {
-        if (session.id === currentSessionId) {
-          return { ...session, title };
-        }
-        return session;
-      });
-      setSessions(updatedSessions);
-      saveSessions(updatedSessions);
+      setMessages(finalMessages);
+      saveMessages(finalMessages);
     } catch (error) {
       console.error('发送消息失败:', error);
-      message.error(`发送失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      antdMessage.error(`发送失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setLoading(false);
     }
@@ -368,13 +236,170 @@ const ChatInterface: React.FC = () => {
     setMessages([]);
     setUploadedFiles([]);
     localStorage.removeItem('chat_history');
-    message.success('聊天记录已清空');
+    antdMessage.success('聊天记录已清空');
   };
 
   const deleteMessage = (messageId: string) => {
     const updatedMessages = messages.filter(msg => msg.id !== messageId);
     setMessages(updatedMessages);
     saveMessages(updatedMessages);
+  };
+
+  const regenerateMessage = async (messageId: string) => {
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex === -1) return;
+
+    // 找到对应的用户消息
+    const userMessageIndex = messageIndex - 1;
+    if (userMessageIndex < 0 || messages[userMessageIndex].role !== 'user') {
+      antdMessage.error('无法找到对应的用户消息');
+      return;
+    }
+
+    const userMessage = messages[userMessageIndex];
+    
+    // 删除当前AI回复
+    const messagesBeforeRegenerate = messages.slice(0, messageIndex);
+    setMessages(messagesBeforeRegenerate);
+
+    if (!currentModel) {
+      antdMessage.error('请选择一个模型');
+      return;
+    }
+
+    const { baseUrl, apiKey } = getProviderConfigForChat(currentModel.providerId);
+    if (!apiKey) {
+      antdMessage.error(`请先配置${currentModel.providerName}的API密钥`);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const messageContent: any[] = [];
+      
+      if (userMessage.content) {
+        messageContent.push({
+          type: 'text',
+          text: userMessage.content
+        });
+      }
+
+      if (userMessage.images && userMessage.images.length > 0 && supportsImages) {
+        userMessage.images.forEach(imageUrl => {
+          messageContent.push({
+            type: 'image_url',
+            image_url: {
+              url: imageUrl
+            }
+          });
+        });
+      }
+
+      const requestBody = {
+        model: selectedModel,
+        messages: supportsImages && messageContent.length > 0 ? [
+          {
+            role: 'user',
+            content: messageContent
+          }
+        ] : messagesBeforeRegenerate.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        temperature: 0.7,
+        max_tokens: currentModel.maxTokens || 2000,
+        stream: true
+      };
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
+      }
+
+      // 创建新的助手消息
+      const newAssistantMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString(),
+        model: selectedModel,
+        providerId: currentModel.providerId
+      };
+
+      const messagesWithNewPlaceholder = [...messagesBeforeRegenerate, newAssistantMessage];
+      setMessages(messagesWithNewPlaceholder);
+
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta;
+                  if (delta?.content) {
+                    accumulatedContent += delta.content;
+                    
+                    // 实时更新消息内容
+                    setMessages(prev => prev.map(msg => 
+                      msg.id === newAssistantMessage.id 
+                        ? { ...msg, content: accumulatedContent }
+                        : msg
+                    ));
+                  }
+                } catch (parseError) {
+                  console.warn('解析流数据失败:', parseError);
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      }
+
+      // 保存最终消息
+      const finalMessages = messagesWithNewPlaceholder.map(msg => 
+        msg.id === newAssistantMessage.id 
+          ? { ...msg, content: accumulatedContent }
+          : msg
+      );
+      setMessages(finalMessages);
+      saveMessages(finalMessages);
+      
+      antdMessage.success('重新生成完成');
+    } catch (error) {
+      console.error('重新生成失败:', error);
+      antdMessage.error(`重新生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      // 恢复原来的消息
+      setMessages(messages);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatTime = (timestamp: string) => {
@@ -388,12 +413,12 @@ const ChatInterface: React.FC = () => {
     beforeUpload: (file: File) => {
       const isImage = file.type.startsWith('image/');
       if (!isImage) {
-        message.error('只能上传图片文件！');
+        antdMessage.error('只能上传图片文件！');
         return false;
       }
       
       if (uploadedFiles.length >= 3) {
-        message.error('最多只能上传3张图片！');
+        antdMessage.error('最多只能上传3张图片！');
         return false;
       }
       
@@ -423,7 +448,14 @@ const ChatInterface: React.FC = () => {
   };
 
   return (
-    <div style={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column', padding: 24 }}>
+    <div style={{ 
+      height: '100%', 
+      display: 'flex', 
+      flexDirection: 'column',
+      padding: window.innerWidth <= 768 ? '12px' : '24px',
+      maxWidth: '100%',
+      overflow: 'hidden'
+    }}>
       <Card 
         style={{ 
           flex: 1, 
@@ -442,7 +474,7 @@ const ChatInterface: React.FC = () => {
       >
         {/* Header */}
         <div style={{ 
-          padding: '16px 24px', 
+          padding: window.innerWidth <= 768 ? '12px 16px' : '16px 24px', 
           borderBottom: '1px solid #f0f0f0',
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           color: '#fff',
@@ -481,16 +513,21 @@ const ChatInterface: React.FC = () => {
 
         {/* Model Selection */}
         <div style={{ 
-          padding: '12px 24px', 
+          padding: window.innerWidth <= 768 ? '8px 16px' : '12px 24px', 
           borderBottom: '1px solid #f0f0f0',
           background: '#fafbfc'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: window.innerWidth <= 768 ? 8 : 12,
+            flexDirection: window.innerWidth <= 768 ? 'column' : 'row',
+            alignItems: window.innerWidth <= 768 ? 'stretch' : 'center'
+          }}>
             <Text strong style={{ fontSize: 13, color: '#374151' }}>选择模型:</Text>
             <Select
               value={selectedModel}
               onChange={setSelectedModel}
-              style={{ width: 420 }}
+              style={{ width: window.innerWidth <= 768 ? '100%' : 420 }}
               size="middle"
               disabled={noModels}
               placeholder={noModels ? "未检测到可用模型，请在 设置 中配置 .env" : "选择模型"}
@@ -519,10 +556,13 @@ const ChatInterface: React.FC = () => {
         
         {/* Messages */}
         <div className="custom-scrollbar" style={{ 
-          flex: 1, 
-          overflowY: 'auto', 
-          padding: '24px',
-          background: '#f8fafc'
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: window.innerWidth <= 768 ? '16px' : '24px',
+          background: '#f8fafc',
+          minHeight: 0,
+          height: 0
         }}>
           {messages.length === 0 ? (
             <div style={{ 
@@ -563,7 +603,7 @@ const ChatInterface: React.FC = () => {
                   display: 'flex', 
                   alignItems: 'flex-start',
                   flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
-                  gap: 12
+                  gap: window.innerWidth <= 768 ? 8 : 12
                 }}>
                   <Avatar 
                     icon={message.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
@@ -575,10 +615,10 @@ const ChatInterface: React.FC = () => {
                     }}
                   />
                   <div style={{ 
-                    maxWidth: '75%',
+                    maxWidth: window.innerWidth <= 768 ? '85%' : '75%',
                     background: message.role === 'user' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#fff',
                     color: message.role === 'user' ? '#fff' : '#374151',
-                    padding: '12px 16px',
+                    padding: window.innerWidth <= 768 ? '10px 12px' : '12px 16px',
                     borderRadius: message.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
                     boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
                     position: 'relative'
@@ -605,12 +645,64 @@ const ChatInterface: React.FC = () => {
                       </div>
                     )}
                     <div style={{ 
-                      whiteSpace: 'pre-wrap', 
                       wordBreak: 'break-word',
                       lineHeight: 1.6,
                       fontSize: 14
                     }}>
-                      {message.content}
+                      {message.role === 'assistant' ? (
+                        <ReactMarkdown
+                          components={{
+                            p: ({ children }) => <div style={{ margin: '8px 0' }}>{children}</div>,
+                            code: ({ children, className }) => {
+                              const isInline = !className;
+                              return isInline ? (
+                                <code style={{
+                                  background: 'rgba(0,0,0,0.1)',
+                                  padding: '2px 4px',
+                                  borderRadius: '4px',
+                                  fontSize: '13px'
+                                }}>
+                                  {children}
+                                </code>
+                              ) : (
+                                <pre style={{
+                                  background: 'rgba(0,0,0,0.05)',
+                                  padding: '12px',
+                                  borderRadius: '8px',
+                                  overflow: 'auto',
+                                  fontSize: '13px',
+                                  margin: '8px 0'
+                                }}>
+                                  <code>{children}</code>
+                                </pre>
+                              );
+                            },
+                            ul: ({ children }) => <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>{children}</ul>,
+                            ol: ({ children }) => <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>{children}</ol>,
+                            li: ({ children }) => <li style={{ margin: '4px 0' }}>{children}</li>,
+                            h1: ({ children }) => <h1 style={{ fontSize: '18px', fontWeight: 'bold', margin: '12px 0 8px 0' }}>{children}</h1>,
+                            h2: ({ children }) => <h2 style={{ fontSize: '16px', fontWeight: 'bold', margin: '10px 0 6px 0' }}>{children}</h2>,
+                            h3: ({ children }) => <h3 style={{ fontSize: '15px', fontWeight: 'bold', margin: '8px 0 4px 0' }}>{children}</h3>,
+                            blockquote: ({ children }) => (
+                              <blockquote style={{
+                                borderLeft: '4px solid #e5e7eb',
+                                paddingLeft: '12px',
+                                margin: '8px 0',
+                                fontStyle: 'italic',
+                                color: '#6b7280'
+                              }}>
+                                {children}
+                              </blockquote>
+                            )
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      ) : (
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {message.content}
+                        </div>
+                      )}
                     </div>
                     <div style={{ 
                       fontSize: 11, 
@@ -621,24 +713,80 @@ const ChatInterface: React.FC = () => {
                       justifyContent: 'space-between'
                     }}>
                       <span>{formatTime(message.timestamp)}</span>
-                      <Popconfirm
-                        title="确定要删除这条消息吗？"
-                        onConfirm={() => deleteMessage(message.id)}
-                        okText="确定"
-                        cancelText="取消"
-                      >
-                        <Button 
-                          type="text" 
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          style={{ 
-                            color: message.role === 'user' ? 'rgba(255,255,255,0.7)' : '#9ca3af',
-                            padding: 0,
-                            minWidth: 'auto',
-                            height: 'auto'
-                          }}
-                        />
-                      </Popconfirm>
+                      {message.role === 'assistant' ? (
+                        <Space size={8}>
+                          <Button 
+                            type="text" 
+                            size="small"
+                            icon={<CopyOutlined />}
+                            onClick={() => {
+                              navigator.clipboard.writeText(message.content);
+                              antdMessage.success('已复制到剪贴板');
+                            }}
+                            style={{ 
+                              color: '#9ca3af',
+                              padding: '2px 4px',
+                              minWidth: 'auto',
+                              height: 'auto',
+                              fontSize: '12px'
+                            }}
+                            title="复制"
+                          />
+                          <Button 
+                            type="text" 
+                            size="small"
+                            icon={<ReloadOutlined />}
+                            onClick={() => regenerateMessage(message.id)}
+                            style={{ 
+                              color: '#9ca3af',
+                              padding: '2px 4px',
+                              minWidth: 'auto',
+                              height: 'auto',
+                              fontSize: '12px'
+                            }}
+                            title="重新生成"
+                          />
+                          <Popconfirm
+                            title="确定要删除这条消息吗？"
+                            onConfirm={() => deleteMessage(message.id)}
+                            okText="确定"
+                            cancelText="取消"
+                          >
+                            <Button 
+                              type="text" 
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              style={{ 
+                                color: '#9ca3af',
+                                padding: '2px 4px',
+                                minWidth: 'auto',
+                                height: 'auto',
+                                fontSize: '12px'
+                              }}
+                              title="删除"
+                            />
+                          </Popconfirm>
+                        </Space>
+                      ) : (
+                        <Popconfirm
+                          title="确定要删除这条消息吗？"
+                          onConfirm={() => deleteMessage(message.id)}
+                          okText="确定"
+                          cancelText="取消"
+                        >
+                          <Button 
+                            type="text" 
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            style={{ 
+                              color: 'rgba(255,255,255,0.7)',
+                              padding: 0,
+                              minWidth: 'auto',
+                              height: 'auto'
+                            }}
+                          />
+                        </Popconfirm>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -676,10 +824,11 @@ const ChatInterface: React.FC = () => {
         
         {/* Input Area */}
         <div style={{ 
-          padding: '20px 24px', 
+          padding: window.innerWidth <= 768 ? '16px' : '20px 24px', 
           borderTop: '1px solid #f0f0f0',
           background: '#fff',
-          borderRadius: '0 0 12px 12px'
+          borderRadius: '0 0 12px 12px',
+          flexShrink: 0
         }}>
           {supportsImages && uploadedFiles.length > 0 && (
             <div style={{ marginBottom: 16 }}>
@@ -704,13 +853,21 @@ const ChatInterface: React.FC = () => {
             </div>
           )}
           
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: window.innerWidth <= 768 ? 8 : 12, 
+            alignItems: 'flex-end',
+            flexDirection: window.innerWidth <= 768 ? 'column' : 'row'
+          }}>
+            <div style={{ 
+              flex: 1, 
+              width: window.innerWidth <= 768 ? '100%' : 'auto'
+            }}>
               <TextArea
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={supportsImages ? "输入消息或上传图片..." : "输入您的问题..."}
-                autoSize={{ minRows: 1, maxRows: 4 }}
+                autoSize={{ minRows: 1, maxRows: window.innerWidth <= 768 ? 3 : 4 }}
                 onPressEnter={(e) => {
                   if (!e.shiftKey) {
                     e.preventDefault();
@@ -726,38 +883,47 @@ const ChatInterface: React.FC = () => {
               />
             </div>
             
-            {supportsImages && uploadedFiles.length === 0 && (
-              <Upload {...uploadProps}>
-                <Button 
-                  icon={<PictureOutlined />}
-                  style={{ 
-                    borderRadius: 12,
-                    height: 40,
-                    border: '2px solid #e5e7eb'
-                  }}
-                >
-                  图片
-                </Button>
-              </Upload>
-            )}
-            
-            <Button 
-              type="primary" 
-              icon={<SendOutlined />}
-              loading={loading}
-              disabled={noModels || loading || (!inputValue.trim() && uploadedFiles.length === 0)}
-              onClick={sendMessage}
-              style={{ 
-                borderRadius: 12,
-                height: 40,
-                paddingLeft: 20,
-                paddingRight: 20,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none'
-              }}
-            >
-              发送
-            </Button>
+            <div style={{ 
+              display: 'flex', 
+              gap: window.innerWidth <= 768 ? 8 : 12,
+              width: window.innerWidth <= 768 ? '100%' : 'auto',
+              justifyContent: window.innerWidth <= 768 ? 'space-between' : 'flex-start'
+            }}>
+              {supportsImages && uploadedFiles.length === 0 && (
+                <Upload {...uploadProps}>
+                  <Button 
+                    icon={<PictureOutlined />}
+                    style={{ 
+                      borderRadius: 12,
+                      height: 40,
+                      border: '2px solid #e5e7eb',
+                      flex: window.innerWidth <= 768 ? 1 : 'none'
+                    }}
+                  >
+                    {window.innerWidth <= 768 ? '' : '图片'}
+                  </Button>
+                </Upload>
+              )}
+              
+              <Button 
+                type="primary" 
+                icon={<SendOutlined />}
+                loading={loading}
+                disabled={noModels || loading || (!inputValue.trim() && uploadedFiles.length === 0)}
+                onClick={sendMessage}
+                style={{ 
+                  borderRadius: 12,
+                  height: 40,
+                  paddingLeft: window.innerWidth <= 768 ? 16 : 20,
+                  paddingRight: window.innerWidth <= 768 ? 16 : 20,
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  border: 'none',
+                  flex: window.innerWidth <= 768 ? 2 : 'none'
+                }}
+              >
+                {window.innerWidth <= 768 ? '' : '发送'}
+              </Button>
+            </div>
           </div>
           
           <div style={{ 

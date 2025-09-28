@@ -5,7 +5,6 @@
       "id": "modelscope",
       "name": "魔塔社区",
       "baseUrl": "https://api-inference.modelscope.cn/v1",
-      "apiKey": "ms-4cfbede1-f17d-4ec4-9aee-fc348497da51",
       "description": "魔塔社区提供的AI模型服务",
       "models": {
         "chatText": [
@@ -73,7 +72,6 @@
       "id": "newapi",
       "name": "New API 渠道",
       "baseUrl": "https://api.zhongjixun.com/v1",
-      "apiKey": "",
       "description": "自建或第三方 New API 兼容服务",
       "models": {
         "chatText": [
@@ -86,7 +84,7 @@
         ],
         "chatVision": [
           {
-            "id": "gpt-4o",
+            "id": "gpt-4o-vision",
             "name": "GPT-4o 视觉版",
             "maxTokens": 128000,
             "supportImages": true
