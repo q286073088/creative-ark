@@ -15,9 +15,10 @@
 
 /* 聊天界面样式 */
 .chat-container {
-  height: calc(100vh - 120px);
+  min-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .chat-messages {

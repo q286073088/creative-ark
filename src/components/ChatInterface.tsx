@@ -449,7 +449,7 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div style={{ 
-      height: '100%', 
+      height: 'calc(100vh - 120px)', 
       display: 'flex', 
       flexDirection: 'column',
       padding: window.innerWidth <= 768 ? '12px' : '24px',
@@ -463,13 +463,15 @@ const ChatInterface: React.FC = () => {
           flexDirection: 'column',
           borderRadius: 12,
           boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-          border: 'none'
+          border: 'none',
+          height: '100%'
         }}
         bodyStyle={{ 
           flex: 1, 
           display: 'flex', 
           flexDirection: 'column', 
-          padding: 0 
+          padding: 0,
+          height: '100%'
         }}
       >
         {/* Header */}
@@ -561,8 +563,7 @@ const ChatInterface: React.FC = () => {
           overflowX: 'hidden',
           padding: window.innerWidth <= 768 ? '16px' : '24px',
           background: '#f8fafc',
-          minHeight: 0,
-          height: 0
+          minHeight: 0
         }}>
           {messages.length === 0 ? (
             <div style={{ 
